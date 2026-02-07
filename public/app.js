@@ -159,9 +159,10 @@ function initializeLazyLoading() {
         });
     }
 
-    // Observe only new unloaded images
+    // Observe only new unloaded images (check data-observed to avoid re-observing)
     document.querySelectorAll('.lazy-cover-img:not(.loaded), .lazy-img:not(.loaded)').forEach(img => {
-        if (img.dataset.src && !img.src) {
+        if (img.dataset.src && !img.dataset.observed) {
+            img.dataset.observed = '1';
             _lazyObserver.observe(img);
         }
     });
@@ -285,7 +286,37 @@ function checkAlbumPasscode() {
     setTimeout(() => input.classList.remove('error'), 2000);
 }
 
+// ── Loading Overlay ─────────────────────────────────────────────────────────
+function showLoadingOverlay(message = 'Loading gallery...') {
+    // Remove any existing overlay immediately
+    const existing = document.getElementById('loadingOverlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'loadingOverlay';
+    overlay.className = 'loading-overlay';
+    overlay.innerHTML = `
+        <div class="loading-overlay-content">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">${escapeHTML(message)}</p>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    // Force reflow then add visible class for animation
+    void overlay.offsetWidth;
+    overlay.classList.add('visible');
+}
+
+function hideLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (!overlay || overlay.classList.contains('hiding')) return;
+    overlay.classList.remove('visible');
+    overlay.classList.add('hiding');
+    setTimeout(() => overlay.remove(), 300);
+}
+
 async function loadGallery(album) {
+    showLoadingOverlay('Loading gallery...');
     try {
         const gallery = galleryLookup[album];
         if (!gallery) throw new Error('Gallery not found');
@@ -311,7 +342,11 @@ async function loadGallery(album) {
         } else {
             loadGalleryNormal(album, photos, downloadLink);
         }
+
+        // Hide once gallery DOM is rendered and images start loading
+        requestAnimationFrame(() => setTimeout(hideLoadingOverlay, 200));
     } catch (error) {
+        hideLoadingOverlay();
         console.error('Error loading gallery:', error);
         alert('Failed to load gallery. Please try again.');
         closePasswordPrompt();
@@ -342,7 +377,7 @@ function loadGalleryNormal(album, photos, downloadLink) {
                 ${photos.map((photo, index) => `
                     <div class="photo-item" id="photoItem-${index}" onclick="openLightbox(${index})">
                         <div class="skeleton"></div>
-                        <img src="" alt="${escapeHTML(photo)}" class="lazy-img" loading="lazy" decoding="async" sizes="${photoSizes}" style="opacity: 0;">
+                        <img data-src="images/${encodedAlbum}/${encodeURIComponent(photo)}" alt="${escapeHTML(photo)}" class="lazy-img" loading="lazy" decoding="async" sizes="${photoSizes}" style="opacity: 0;">
                     </div>
                 `).join('')}
             </div>
@@ -356,12 +391,6 @@ function loadGalleryNormal(album, photos, downloadLink) {
 
     document.removeEventListener('keydown', handleKeyboardNavigation);
     document.addEventListener('keydown', handleKeyboardNavigation);
-
-    // Set data-src for lazy loading
-    const imgElements = document.querySelectorAll('.photo-item img');
-    imgElements.forEach((imgElement, index) => {
-        imgElement.dataset.src = `images/${encodedAlbum}/${encodeURIComponent(photos[index])}`;
-    });
 
     const photoGrid = document.getElementById('photoGrid');
     initializeMasonry(photoGrid);
