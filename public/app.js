@@ -47,10 +47,23 @@ function getObserverSettings() {
 }
 
 // ── Gallery Loading ────────────────────────────────────────────────────────
+async function fetchWithRetry(url, retries = 3, delay = 500) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const response = await fetch(url);
+            if (response.ok) return response;
+            console.warn(`Fetch ${url} returned ${response.status} (attempt ${i + 1}/${retries})`);
+        } catch (err) {
+            console.warn(`Fetch ${url} failed (attempt ${i + 1}/${retries}):`, err.message);
+        }
+        if (i < retries - 1) await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
+    }
+    throw new Error(`Failed to fetch ${url} after ${retries} attempts`);
+}
+
 async function loadGalleries() {
     try {
-        const response = await fetch('galleries.json');
-        if (!response.ok) throw new Error('Failed to load galleries');
+        const response = await fetchWithRetry('galleries.json');
 
         const data = await response.json();
         galleryList = data.galleries || [];
