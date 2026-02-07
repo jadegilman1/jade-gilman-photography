@@ -1,17 +1,19 @@
 import json
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from PIL import Image
 from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "utils"))
+from thumb_generator import generate_thumbs
 REGISTRY_PATH = ROOT / "data" / "galleries.json"
 PUBLIC_IMAGES = ROOT / "public" / "images"
-OUTPUT_JSON = PUBLIC_IMAGES / "galleries.json"
-SECRETS_JSON = ROOT / "public" / "secrets.json"
+OUTPUT_JSON = ROOT / "public" / "galleries.json"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 RESIZE_TARGET = (1600, 1200)
 MAX_WORKERS = os.cpu_count() or 4
@@ -213,6 +215,10 @@ def update_entry(entry: Dict) -> Dict:
         else:
             print("Skipped resizing. If images are large, the site may load slowly.")
 
+    # Always generate / refresh thumbnails for grid & cover views
+    print("Generating thumbnails…")
+    generate_thumbs(folder_path)
+
     existing_cover = entry.get("cover", "")
     if existing_cover and existing_cover in photos:
         cover = existing_cover
@@ -247,9 +253,8 @@ def persist_entry(registry: Dict, updated: Dict) -> None:
 # ── Public payload generation ───────────────────────────────────────────────
 
 
-def build_public_payload(registry: Dict) -> Tuple[Dict, Dict]:
+def build_public_payload(registry: Dict) -> Dict:
     payload: Dict = {"galleries": []}
-    secrets: Dict = {}
     for entry in registry["galleries"]:
         folder_path = PUBLIC_IMAGES / entry.get("folder", entry.get("name", ""))
         photos = find_images(folder_path) if folder_path.exists() else []
@@ -262,21 +267,16 @@ def build_public_payload(registry: Dict) -> Tuple[Dict, Dict]:
             "name": name,
             "title": entry.get("title"),
             "coverPhoto": cover,
-            "description": f"{entry.get('title', name)} collection",
-        })
-        secrets[name] = {
             "password": entry.get("password", ""),
             "downloadLink": entry.get("download_link", ""),
-        }
-    return payload, secrets
+        })
+    return payload
 
 
-def write_public_files(payload: Dict, secrets: Dict) -> None:
+def write_public_files(payload: Dict) -> None:
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
-    with open(SECRETS_JSON, "w", encoding="utf-8") as f:
-        json.dump(secrets, f, indent=2, ensure_ascii=False)
 
 
 # ── Main ────────────────────────────────────────────────────────────────────
@@ -304,11 +304,10 @@ def main():
 
     persist_entry(registry, updated_entry)
     save_registry(registry)
-    payload, secrets = build_public_payload(registry)
-    write_public_files(payload, secrets)
+    payload = build_public_payload(registry)
+    write_public_files(payload)
     print(f"\nDone. Updated registry: {REGISTRY_PATH}")
     print(f"Updated public data: {OUTPUT_JSON}")
-    print(f"Secrets: {SECRETS_JSON}")
     print("You can now deploy.")
 
 

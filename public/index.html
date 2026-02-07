@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-    <meta name="description" content="Curated photography collections by Jade Gilman">
+    <meta name="description" content="Wedding and portrait photography by Jade Gilman">
     <meta name="format-detection" content="telephone=no">
-    <title>JADE GILMAN | Fine Art Photography</title>
+    <title>JADE GILMAN | Wedding & Portrait Photography</title>
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,8 +13,7 @@
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     
     <!-- Preload critical data so app.js hits cache -->
-    <link rel="preload" href="images/galleries.json" as="fetch" crossorigin="anonymous">
-    <link rel="preload" href="secrets.json" as="fetch" crossorigin="anonymous">
+    <link rel="preload" href="galleries.json" as="fetch" crossorigin="anonymous">
     
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
     
@@ -85,7 +84,7 @@
             <a href="https://jade-gilman-photography.web.app/" target="_blank">
                 <h1 class="logo">JADE GILMAN</h1>
             </a>
-            <span class="nav-pill">Fine art photography</span>
+            <span class="nav-pill">Wedding & Portrait Photography</span>
         </nav>
     </header>
 
@@ -99,17 +98,17 @@
     <div class="modal" id="passwordModal">
         <div class="modal-dialog">
             <div class="modal-header">
-                <h3>Collection Authentication</h3>
-                <button class="icon-btn" onclick="closePasswordPrompt()">&times;</button>
+                <h3>Enter Password</h3>
+                <button class="icon-btn" onclick="closePasswordModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <input type="password" id="albumPasscodeInput" class="input-field" 
-                       placeholder="Enter curatorial passcode">
+                <input type="password" id="passwordInput" class="input-field" 
+                       placeholder="Gallery password">
                 <div id="passwordError" class="error-message"></div>
             </div>
             <div class="modal-footer">
-                <button onclick="checkAlbumPasscode()" class="btn btn-primary">
-                    Unlock Archive
+                <button onclick="checkPassword()" class="btn btn-primary">
+                    View Gallery
                 </button>
             </div>
         </div>
@@ -117,12 +116,12 @@
     <div id="galleryContainer" class="gallery-container"></div>
 
     <div class="lightbox" id="lightbox">
-        <div class="lightbox-overlay" onclick="closeModal()"></div>
-        <button class="lightbox-close" onclick="closeModal()" aria-label="Close lightbox">
+        <div class="lightbox-overlay" onclick="closeLightbox()"></div>
+        <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close lightbox">
             <i class="fas fa-times"></i>
         </button>
         <div class="lightbox-container">
-            <button class="lightbox-nav lightbox-nav-prev" onclick="navigatePhoto(-1)" aria-label="Previous image">
+            <button class="lightbox-nav lightbox-nav-prev" onclick="navigatePhoto(-1)" aria-label="Previous photo">
                 <i class="fas fa-chevron-left"></i>
             </button>
             <div class="lightbox-content">
@@ -133,7 +132,7 @@
                     </div>
                 </div>
             </div>
-            <button class="lightbox-nav lightbox-nav-next" onclick="navigatePhoto(1)" aria-label="Next image">
+            <button class="lightbox-nav lightbox-nav-next" onclick="navigatePhoto(1)" aria-label="Next photo">
                 <i class="fas fa-chevron-right"></i>
             </button>
         </div>

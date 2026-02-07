@@ -10,23 +10,10 @@
     --glass: rgba(255, 255, 255, 0.12);
     --shadow-soft: 0 10px 40px rgba(15, 17, 24, 0.08);
     --shadow-strong: 0 18px 60px rgba(15, 17, 24, 0.14);
+    --shadow-deep: 0 22px 70px rgba(15, 17, 24, 0.2);
     --transition: all 0.45s cubic-bezier(0.22, 1, 0.36, 1);
     --fast-transition: all 0.2s ease;
-    /* Legacy aliases to keep existing components stable */
-    --eggshell: var(--canvas);
-    --eggshell-dark: var(--canvas-soft);
-    --navy: var(--ink);
-    --navy-light: var(--ink-soft);
-    --navy-dark: var(--ink-soft);
-    --gold: var(--accent);
-    --gold-light: var(--accent-soft);
-    --gold-dark: var(--accent);
-    --taupe: var(--muted);
-    --taupe-light: var(--muted);
     --warm-white: #fffdf8;
-    --subtle-shadow: var(--shadow-soft);
-    --elegant-shadow: var(--shadow-strong);
-    --deep-shadow: 0 22px 70px rgba(15, 17, 24, 0.2);
 }
 
 * {
@@ -444,7 +431,7 @@ body {
     opacity: 0;
     animation: modalAppear 0.4s cubic-bezier(0.23, 1, 0.32, 1) forwards;
     border-radius: 12px;
-    box-shadow: var(--deep-shadow);
+    box-shadow: var(--shadow-deep);
 }
 
 .modal-header {
@@ -459,7 +446,7 @@ body {
     font-family: 'Bodoni Moda', serif;
     font-size: 1.6rem;
     font-weight: 400;
-    color: var(--navy-dark);
+    color: var(--ink-soft);
     letter-spacing: 1px;
 }
 
@@ -467,7 +454,7 @@ body {
     background: none;
     border: none;
     font-size: 1.5rem;
-    color: var(--taupe);
+    color: var(--muted);
     cursor: pointer;
     transition: var(--fast-transition);
     padding: 0.5rem;
@@ -475,7 +462,7 @@ body {
 }
 
 .icon-btn:hover {
-    color: var(--navy-dark);
+    color: var(--ink-soft);
     background: rgba(197, 164, 126, 0.1);
 }
 
@@ -513,16 +500,16 @@ body {
     background: var(--warm-white);
     font-family: 'DM Sans', sans-serif;
     font-size: 1rem;
-    color: var(--navy);
+    color: var(--ink);
     transition: var(--transition);
     border-radius: 6px;
 }
 
 .input-field:focus {
     outline: none;
-    border-color: var(--gold);
+    border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(197, 164, 126, 0.1);
-    background: var(--eggshell);
+    background: var(--canvas);
 }
 
 .input-field.error {
@@ -604,8 +591,8 @@ body {
     overflow: hidden;
     border-radius: 8px;
     transition: var(--transition);
-    background: var(--eggshell-dark);
-    box-shadow: var(--subtle-shadow);
+    background: var(--canvas-soft);
+    box-shadow: var(--shadow-soft);
     border: 1px solid rgba(197, 164, 126, 0.1);
     margin-bottom: 10px; /* Reduced vertical gap */
     min-height: 150px; /* Placeholder height before image loads */
@@ -618,7 +605,7 @@ body {
 }
 
 .photo-item:hover {
-    box-shadow: var(--elegant-shadow);
+    box-shadow: var(--shadow-strong);
     transform: translateY(-4px);
     border-color: rgba(197, 164, 126, 0.2);
 }
@@ -753,7 +740,7 @@ body {
     align-items: center;
     justify-content: center;
     font-size: 20px;
-    color: var(--eggshell);
+    color: var(--canvas);
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.23, 1, 0.32, 1);
     z-index: 2002;
@@ -763,8 +750,8 @@ body {
 
 .lightbox-close:hover {
     background: rgba(197, 164, 126, 0.15);
-    border-color: var(--gold);
-    color: var(--gold);
+    border-color: var(--accent);
+    color: var(--accent);
     transform: rotate(90deg);
 }
 
@@ -785,7 +772,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--eggshell);
+    color: var(--canvas);
     font-size: 20px;
     cursor: pointer;
     transition: all 0.35s cubic-bezier(0.23, 1, 0.32, 1);
@@ -797,8 +784,8 @@ body {
 
 .lightbox-nav:hover {
     background: rgba(197, 164, 126, 0.15);
-    border-color: var(--gold);
-    color: var(--gold);
+    border-color: var(--accent);
+    color: var(--accent);
     opacity: 1;
     transform: translateY(-50%) scale(1.1);
 }
@@ -832,7 +819,7 @@ body {
 .lightbox-counter {
     font-family: 'DM Sans', sans-serif;
     font-size: 16px;
-    color: var(--eggshell);
+    color: var(--canvas);
     letter-spacing: 2px;
     padding: 10px 24px;
     background: rgba(249, 247, 244, 0.08);
@@ -863,7 +850,7 @@ body {
     width: 100%;
     height: 100%;
     border: 3px solid rgba(197, 164, 126, 0.2);
-    border-top-color: var(--gold);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
@@ -973,7 +960,7 @@ body {
 }
 
 .progress-bar .progress {
-    background: linear-gradient(90deg, var(--gold-dark), var(--gold), var(--gold-light));
+    background: linear-gradient(90deg, var(--accent), var(--accent-soft));
     border-radius: 2px;
     height: 100%;
     width: 0%;
@@ -1152,7 +1139,7 @@ body {
 
 .back-btn {
     background: transparent;
-    color: var(--navy);
+    color: var(--ink);
     border: 1px solid rgba(139, 131, 120, 0.4);
     padding: 1rem 2rem;
     transition: var(--transition);
@@ -1160,10 +1147,10 @@ body {
 }
 
 .back-btn:hover {
-    background: var(--navy-dark);
-    color: var(--eggshell);
-    border-color: var(--navy-dark);
-    box-shadow: var(--subtle-shadow);
+    background: var(--ink-soft);
+    color: var(--canvas);
+    border-color: var(--ink-soft);
+    box-shadow: var(--shadow-soft);
     transform: translateY(-1px);
 }
 
@@ -1245,7 +1232,7 @@ body {
     opacity: 0;
     animation: modalAppear 0.4s ease forwards;
     border-radius: 12px;
-    box-shadow: var(--deep-shadow);
+    box-shadow: var(--shadow-deep);
 }
 
 .exit-modal-header {
@@ -1260,7 +1247,7 @@ body {
     font-family: 'Bodoni Moda', serif;
     font-size: 1.6rem;
     font-weight: 400;
-    color: var(--navy-dark);
+    color: var(--ink-soft);
     letter-spacing: 1px;
 }
 
@@ -1268,7 +1255,7 @@ body {
     padding: 1.5rem 2rem;
     text-align: center;
     font-size: 1.1rem;
-    color: var(--navy);
+    color: var(--ink);
     line-height: 1.6;
 }
 
@@ -1298,7 +1285,7 @@ body {
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, var(--eggshell-dark) 25%, #e8e5dc 50%, var(--eggshell-dark) 75%);
+    background: linear-gradient(90deg, var(--canvas-soft) 25%, #e8e5dc 50%, var(--canvas-soft) 75%);
     background-size: 200% 100%;
     animation: skeleton-loading 1.8s infinite;
     border-radius: 8px;

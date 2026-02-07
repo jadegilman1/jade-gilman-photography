@@ -1,0 +1,123 @@
+{
+  "galleries": [
+    {
+      "name": "Allison & David",
+      "title": "Allison & David",
+      "coverPhoto": "DSC02843.jpg",
+      "password": "Trolley",
+      "downloadLink": "https://github.com/0xSolanaceae/jade-gilman-photography/releases/download/Allison.David/DSC02007-2.zip"
+    },
+    {
+      "name": "Amanda & Max",
+      "title": "Amanda & Max",
+      "coverPhoto": "DSC08328.jpg",
+      "password": "Conway",
+      "downloadLink": "https://github.com/0xSolanaceae/jade-gilman-photography/releases/download/Amanda.Max/Amanda.Max.zip"
+    },
+    {
+      "name": "Cafe Luna",
+      "title": "Cafe Luna",
+      "coverPhoto": "DSC05112.jpg",
+      "password": "Luna",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Cafe.Luna/Luna.zip"
+    },
+    {
+      "name": "Dinh Family",
+      "title": "Dinh Family",
+      "coverPhoto": "DSC05606.jpg",
+      "password": "Nails",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Dinh.Family/Dinh.Family.zip"
+    },
+    {
+      "name": "Eva & Ruyery",
+      "title": "Eva & Ruyery",
+      "coverPhoto": "DSC00567.jpg",
+      "password": "Library",
+      "downloadLink": "https://github.com/0xSolanaceae/jade-gilman-photography/releases/download/Eva.Ruyery/Sneak.zip"
+    },
+    {
+      "name": "Gabby & Taffa",
+      "title": "Gabby & Taffa",
+      "coverPhoto": "DSC08007.jpg",
+      "password": "Veil",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Gabby.Taffa.wedding/DSC07795.zip"
+    },
+    {
+      "name": "Jonathan & Victoria",
+      "title": "Jonathan & Victoria",
+      "coverPhoto": "DSC07404-2.jpg",
+      "password": "Sunset",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Jonathan.Victoria/j.V.Z.zip"
+    },
+    {
+      "name": "Josh & Rhiannon",
+      "title": "Josh & Rhiannon",
+      "coverPhoto": "DSC05769.jpg",
+      "password": "Sunny",
+      "downloadLink": "https://github.com/0xSolanaceae/jade-gilman-photography/releases/download/Josh.Rhiannon/DSC05570.zip"
+    },
+    {
+      "name": "Katherine & Nick",
+      "title": "Katherine & Nick",
+      "coverPhoto": "DSC06612.jpg",
+      "password": "bridge",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Katherine.Nick/DSC05694.zip"
+    },
+    {
+      "name": "Kayla & Tyler",
+      "title": "Kayla & Tyler",
+      "coverPhoto": "DSC04219.jpg",
+      "password": "Sporran",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Kayla.Tyler/Kayla.and.tyler.zip"
+    },
+    {
+      "name": "Nick & Emily",
+      "title": "Nick & Emily",
+      "coverPhoto": "DSC08533-Enhanced-NR.jpg",
+      "password": "Loon2025",
+      "downloadLink": "https://github.com/0xSolanaceae/jade-gilman-photography/releases/download/Nick.Emily/Emily.and.Nick.Final.zip"
+    },
+    {
+      "name": "Rowan & Eli",
+      "title": "Rowan & Eli",
+      "coverPhoto": "DSC02440.jpg",
+      "password": "Dunkin",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Rowan.Eli/R+E.zip"
+    },
+    {
+      "name": "Sammi & Will",
+      "title": "Sammi & Will",
+      "coverPhoto": "DSC07125.jpg",
+      "password": "garden",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Sammi.Will/Sammi.Will.zip"
+    },
+    {
+      "name": "Stacey & Corey",
+      "title": "Stacey & Corey",
+      "coverPhoto": "DSC07991.jpg",
+      "password": "Fall",
+      "downloadLink": "https://github.com/0xSolanaceae/jade-gilman-photography/releases/download/Stacey.Corey/DSC07335.zip"
+    },
+    {
+      "name": "Theresa & James",
+      "title": "Theresa & James",
+      "coverPhoto": "DSC01032.jpg",
+      "password": "Beauty",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Theresa.James/DSC00799.zip"
+    },
+    {
+      "name": "Thomas & Erika",
+      "title": "Thomas & Erika",
+      "coverPhoto": "DSC00340.jpg",
+      "password": "Inn",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/thomas.erika/DSC00246.zip"
+    },
+    {
+      "name": "Yuri",
+      "title": "Yuri",
+      "coverPhoto": "DSC04828.jpg",
+      "password": "food",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Yuri.Cafe/yuri.zip"
+    }
+  ]
+}
