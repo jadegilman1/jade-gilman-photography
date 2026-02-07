@@ -593,7 +593,7 @@ body {
     transition: var(--transition);
     background: var(--canvas-soft);
     box-shadow: var(--shadow-soft);
-    border: 1px solid rgba(197, 164, 126, 0.1);
+    border: none;
     margin-bottom: 10px; /* Reduced vertical gap */
     min-height: 150px; /* Placeholder height before image loads */
 }
@@ -607,7 +607,6 @@ body {
 .photo-item:hover {
     box-shadow: var(--shadow-strong);
     transform: translateY(-4px);
-    border-color: rgba(197, 164, 126, 0.2);
 }
 
 .photo-item img {
