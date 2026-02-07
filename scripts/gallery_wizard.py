@@ -154,11 +154,14 @@ def already_resized(folder: Path) -> bool:
 
 
 def _resize_one(file_path: Path) -> None:
-    with Image.open(file_path) as img:
-        if img.width <= RESIZE_TARGET[0] and img.height <= RESIZE_TARGET[1]:
-            return
-        img.thumbnail(RESIZE_TARGET, RESAMPLE)
-        img.save(file_path, quality=85, optimize=True)
+    try:
+        with Image.open(file_path) as img:
+            if img.width <= RESIZE_TARGET[0] and img.height <= RESIZE_TARGET[1]:
+                return
+            img.thumbnail(RESIZE_TARGET, RESAMPLE)
+            img.save(file_path, quality=85, optimize=True)
+    except (OSError, Image.DecompressionBombError) as e:
+        print(f"Warning: Could not process {file_path.name}: {e}")
 
 
 def resize_images(folder: Path) -> None:
@@ -259,7 +262,7 @@ def build_public_payload(registry: Dict) -> Tuple[Dict, Dict]:
             "name": name,
             "title": entry.get("title"),
             "coverPhoto": cover,
-            "photos": photos,
+            "description": f"{entry.get('title', name)} collection",
         })
         secrets[name] = {
             "password": entry.get("password", ""),

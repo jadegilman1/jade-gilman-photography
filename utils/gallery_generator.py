@@ -131,11 +131,12 @@ def generate_galleries_json(directory: Path) -> None:
                 cover_photo = _choose_cover_photo_interactively(folder_path, cover_photo, folder)
 
         title = existing_galleries.get(folder, {}).get("title", folder)
+        description = existing_galleries.get(folder, {}).get("description", f"{folder} collection")
         galleries.append({
             "name": folder,
             "title": title,
             "coverPhoto": cover_photo,
-            "photos": images,
+            "description": description,
         })
 
     with open(galleries_json_path, "w", encoding="utf-8") as f:

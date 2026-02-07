@@ -286,10 +286,6 @@ body {
     background: transparent;
 }
 
-.image-overlay {
-    display: none;
-}
-
 .card-image img {
     width: 100%;
     height: 460px;
@@ -587,16 +583,13 @@ body {
 }
 
 /* Masonry grid sizer for column width */
-.photo-grid-sizer {
-    width: calc(33.333% - 10px); /* 3 columns on desktop */
-}
-
+.photo-grid-sizer,
 .photo-item {
     width: calc(33.333% - 10px); /* 3 columns on desktop */
 }
 
 .photo-grid-gutter-sizer {
-    width: 10px; /* Reduced gap between items */
+    width: 10px;
 }
 
 /* Hide sizer elements (they're just for masonry calculations) */
@@ -650,14 +643,6 @@ body {
 @media (hover: hover) and (pointer: fine) {
     .photo-item:hover img {
         transform: scale(1.08);
-    }
-    
-    .card-image img {
-        will-change: transform;
-    }
-    
-    .photo-item img {
-        will-change: transform;
     }
 }
 
@@ -1313,19 +1298,9 @@ body {
     }
 }
 
-/* Improve image rendering on mobile */
+/* Prevent layout shift while images load on mobile */
 @media (max-width: 768px) {
-    img {
-        image-rendering: -webkit-optimize-contrast;
-        image-rendering: crisp-edges;
-    }
-    
-    /* Prevent layout shift while images load */
     .card-image {
         min-height: 320px;
-    }
-    
-    .photo-item {
-        min-height: 400px;
     }
 }

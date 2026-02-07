@@ -25,11 +25,14 @@ else:
 
 
 def _resize_one(file_path: Path) -> None:
-    with Image.open(file_path) as img:
-        if img.width <= RESIZE_TARGET[0] and img.height <= RESIZE_TARGET[1]:
-            return
-        img.thumbnail(RESIZE_TARGET, RESAMPLE)
-        img.save(file_path, quality=85, optimize=True)
+    try:
+        with Image.open(file_path) as img:
+            if img.width <= RESIZE_TARGET[0] and img.height <= RESIZE_TARGET[1]:
+                return
+            img.thumbnail(RESIZE_TARGET, RESAMPLE)
+            img.save(file_path, quality=85, optimize=True)
+    except (OSError, Image.DecompressionBombError) as e:
+        print(f"Warning: Could not process {file_path.name}: {e}")
 
 
 def resize_images(directory: Path) -> None:

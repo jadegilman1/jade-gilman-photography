@@ -1,32 +1,66 @@
+// ── State ───────────────────────────────────────────────────────────────────
 let galleryLookup = {};
 let galleryList = [];
 let currentGallery = null;
 let currentPhotos = [];
 let currentPhotoIndex = 0;
-let currentZip = null;
 let masonryInstance = null;
 
-// Utility: sanitize a string for safe insertion into HTML
+// ── Observer Management (single instances, properly cleaned up) ─────────────
+let _lazyObserver = null;
+let _scrollObserver = null;
+let _mutationObserver = null;
+let _lightboxClosing = false;
+
+// ── Utility: sanitize a string for safe insertion into HTML ─────────────────
 const _escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 function escapeHTML(str) {
     return String(str).replace(/[&<>"']/g, ch => _escapeMap[ch]);
 }
 
-// Utility: create a safe CSS-friendly ID from a gallery name
+// ── Utility: create a safe CSS-friendly ID from a gallery name ──────────────
 function safeCSSId(name) {
     return name.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+// ── Debounce utility ────────────────────────────────────────────────────────
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+}
+
+// ── Connection / device detection (cached) ──────────────────────────────────
+const _isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+function isSlowConnection() {
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    if (!connection) return false;
+    if (['slow-2g', '2g'].includes(connection.effectiveType)) return true;
+    return !!connection.saveData;
+}
+
+function getOptimalObserverSettings() {
+    const slow = isSlowConnection();
+    return {
+        rootMargin: slow ? '200px' : (_isMobile ? '150px' : '50px'),
+        threshold: slow ? 0.1 : 0.01
+    };
+}
+
 async function loadGalleries() {
     try {
-        // Fetch galleries and secrets in parallel
         const [response, secretsResponse] = await Promise.all([
             fetch('images/galleries.json'),
             fetch('secrets.json').catch(() => null)
         ]);
         if (!response.ok) throw new Error('Failed to load galleries');
+
         const data = await response.json();
         galleryList = data.galleries || [];
+
         try {
             if (secretsResponse && secretsResponse.ok) {
                 const secrets = await secretsResponse.json();
@@ -39,40 +73,41 @@ async function loadGalleries() {
         } catch (err) {
             console.warn('Secrets not loaded (fallback):', err);
         }
+
         galleryLookup = {};
         galleryList.forEach(g => {
             if (g && g.name) {
                 galleryLookup[g.name] = g;
-                // Also index by safe CSS ID for promptPassword lookups
-                galleryLookup[safeCSSId(g.name)] = g;
+                const safeId = safeCSSId(g.name);
+                // Only index by safeCSSId if it doesn't collide with another gallery name
+                if (!galleryLookup[safeId]) {
+                    galleryLookup[safeId] = g;
+                }
             }
         });
-        const albumsGrid = document.getElementById('albumsGrid');
 
-        // Responsive hints for covers to avoid over-downloading on small screens
+        const albumsGrid = document.getElementById('albumsGrid');
         const coverSizes = '(min-width: 1200px) 33vw, (min-width: 768px) 45vw, 90vw';
-        
-        // First 3 galleries should load eagerly
         const eagerLoadCount = 3;
-        
+
         albumsGrid.innerHTML = galleryList.map((gallery, index) => {
             const isEager = index < eagerLoadCount;
             const safeId = safeCSSId(gallery.name);
             const safeTitle = escapeHTML(gallery.title);
             const coverSrc = `images/${encodeURIComponent(gallery.name)}/${encodeURIComponent(gallery.coverPhoto)}`;
-            
+
             return `
             <article class="card album-card" data-album="${safeId}" onclick="promptPassword('${safeId}')">
                 <div class="card-image">
-                    <div class="image-overlay"></div>
                     ${!isEager ? '<div class="skeleton"></div>' : ''}
-                    <img id="cover-${safeId}" 
+                    <img id="cover-${safeId}"
                          ${isEager ? `src="${coverSrc}"` : `data-src="${coverSrc}"`}
-                         alt="${safeTitle}" 
+                         alt="${safeTitle}"
                          class="${isEager ? 'eager-cover-img' : 'lazy-cover-img'}"
                          loading="${isEager ? 'eager' : 'lazy'}"
                          decoding="async"
                          fetchpriority="${isEager ? 'high' : 'auto'}"
+                         sizes="${coverSizes}"
                          style="opacity: ${isEager ? '1' : '0'};">
                 </div>
                 <div class="card-content">
@@ -84,8 +119,7 @@ async function loadGalleries() {
             </article>
         `;
         }).join('');
-        
-        // Initialize lazy loading for cover images (only for lazy-loaded ones)
+
         initializeLazyLoading();
     } catch (error) {
         console.error('Error loading galleries:', error);
@@ -93,17 +127,13 @@ async function loadGalleries() {
     }
 }
 
-// Improved Intersection Observer for lazy loading with mobile optimizations
+// ── Lazy Loading (single shared IntersectionObserver) ────────────────────────
 function initializeLazyLoading() {
-    // Check if IntersectionObserver is supported
     if (!('IntersectionObserver' in window)) {
-        // Fallback: load all images immediately for older browsers
         document.querySelectorAll('.lazy-cover-img, .lazy-img').forEach(img => {
-            const src = img.dataset.src;
-            const srcset = img.dataset.srcset;
-            if (src) {
-                img.src = src;
-                if (srcset) img.srcset = srcset;
+            if (img.dataset.src) {
+                img.src = img.dataset.src;
+                if (img.dataset.srcset) img.srcset = img.dataset.srcset;
                 img.style.opacity = '1';
                 img.classList.add('loaded');
             }
@@ -111,148 +141,126 @@ function initializeLazyLoading() {
         return;
     }
 
-    // More aggressive loading for mobile devices
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    const settings = getOptimalObserverSettings();
-    const rootMargin = isMobile ? settings.rootMargin : '50px';
-    
-    const imageObserver = new IntersectionObserver((entries, observer) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
+    // Create observer only once, reuse it across calls
+    if (!_lazyObserver) {
+        const settings = getOptimalObserverSettings();
+        _lazyObserver = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (!entry.isIntersecting) return;
                 const img = entry.target;
                 const src = img.dataset.src;
-                const srcset = img.dataset.srcset;
-                
-                if (src) {
-                    let retryCount = 0;
-                    const maxRetries = 3;
-                    
-                    // Function to load image with retry logic
-                    const loadImage = () => {
-                        const tempImg = new Image();
-                        
-                        // Add error handling for failed loads
-                        tempImg.onerror = () => {
-                            console.error(`Failed to load image (attempt ${retryCount + 1}): ${src}`);
-                            retryCount++;
-                            
-                            // Retry with exponential backoff
-                            if (retryCount < maxRetries) {
-                                const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
-                                setTimeout(loadImage, delay);
-                            } else {
-                                // Show error state after max retries
-                                const skeleton = img.previousElementSibling;
-                                if (skeleton && skeleton.classList.contains('skeleton')) {
-                                    skeleton.style.display = 'none';
-                                }
-                                img.alt = 'Failed to load image';
-                                img.style.opacity = '0.5';
-                            }
-                        };
-                        
-                        tempImg.onload = () => {
-                            img.src = src;
-                            if (srcset) img.srcset = srcset;
-                            img.style.opacity = '1';
-                            img.style.transition = 'opacity 0.3s ease-in';
-                            // Remove skeleton loader
-                            const skeleton = img.previousElementSibling;
-                            if (skeleton && skeleton.classList.contains('skeleton')) {
-                                skeleton.style.display = 'none';
-                                skeleton.remove(); // Completely remove skeleton from DOM
-                            }
-                            img.classList.add('loaded');
-                            
-                            // Add loaded class to parent photo-item
-                            const photoItem = img.closest('.photo-item');
-                            if (photoItem) {
-                                photoItem.classList.add('image-loaded');
-                            }
-                            
-                            // Update masonry layout when image loads
-                            if (masonryInstance && img.closest('.photo-grid')) {
-                                updateMasonryLayout();
-                            }
-                        };
-                        
-                        tempImg.src = src;
-                    };
-                    
-                    loadImage();
-                    observer.unobserve(img);
-                }
-            }
+                if (!src) return;
+                observer.unobserve(img);
+                loadImageWithRetry(img, src, img.dataset.srcset);
+            });
+        }, {
+            rootMargin: settings.rootMargin,
+            threshold: settings.threshold
         });
-    }, {
-        rootMargin: rootMargin,
-        threshold: settings.threshold
-    });
+    }
 
-    // Observe all lazy images
-    document.querySelectorAll('.lazy-cover-img, .lazy-img').forEach(img => {
-        imageObserver.observe(img);
+    // Observe only new unloaded images
+    document.querySelectorAll('.lazy-cover-img:not(.loaded), .lazy-img:not(.loaded)').forEach(img => {
+        if (img.dataset.src && !img.src) {
+            _lazyObserver.observe(img);
+        }
     });
 }
 
-// Initialize Masonry layout for gallery
+function loadImageWithRetry(img, src, srcset, retryCount = 0) {
+    const maxRetries = 3;
+    const tempImg = new Image();
+
+    tempImg.onerror = () => {
+        retryCount++;
+        if (retryCount < maxRetries) {
+            const delay = Math.min(1000 * Math.pow(2, retryCount), 5000);
+            setTimeout(() => loadImageWithRetry(img, src, srcset, retryCount), delay);
+        } else {
+            const skeleton = img.previousElementSibling;
+            if (skeleton?.classList.contains('skeleton')) {
+                skeleton.remove();
+            }
+            img.alt = 'Failed to load image';
+            img.style.opacity = '0.5';
+        }
+    };
+
+    tempImg.onload = () => {
+        img.src = src;
+        if (srcset) img.srcset = srcset;
+        img.style.opacity = '1';
+
+        const skeleton = img.previousElementSibling;
+        if (skeleton?.classList.contains('skeleton')) {
+            skeleton.remove();
+        }
+        img.classList.add('loaded');
+
+        const photoItem = img.closest('.photo-item');
+        if (photoItem) {
+            photoItem.classList.add('image-loaded');
+        }
+
+        if (masonryInstance && img.closest('.photo-grid')) {
+            debouncedMasonryLayout();
+        }
+    };
+
+    tempImg.src = src;
+}
+
 function initializeMasonry(gridElement) {
-    // Destroy existing instance if any
     if (masonryInstance) {
         masonryInstance.destroy();
         masonryInstance = null;
     }
-    
-    // Wait for Masonry library to be available
+
     if (typeof Masonry === 'undefined') {
         console.warn('Masonry library not loaded yet, retrying...');
         setTimeout(() => initializeMasonry(gridElement), 100);
         return;
     }
-    
-    // Initialize masonry
+
     masonryInstance = new Masonry(gridElement, {
         itemSelector: '.photo-item',
         columnWidth: '.photo-grid-sizer',
         gutter: '.photo-grid-gutter-sizer',
         percentPosition: true,
         transitionDuration: '0.3s',
-        initLayout: false // Don't layout immediately, wait for images
+        initLayout: false
     });
-    
-    // Use imagesLoaded to layout after images load
+
     if (typeof imagesLoaded !== 'undefined') {
-        imagesLoaded(gridElement, function() {
-            masonryInstance.layout();
-        });
+        imagesLoaded(gridElement, () => masonryInstance?.layout());
     } else {
-        // Fallback if imagesLoaded isn't available
         masonryInstance.layout();
     }
-    
+
     return masonryInstance;
 }
 
-// Update masonry layout (for dynamic content)
-function updateMasonryLayout() {
-    if (masonryInstance) {
-        if (typeof imagesLoaded !== 'undefined') {
-            imagesLoaded(masonryInstance.element, function() {
-                masonryInstance.reloadItems();
-                masonryInstance.layout();
-            });
-        } else {
-            masonryInstance.reloadItems();
-            masonryInstance.layout();
-        }
+// Debounced masonry layout update to batch rapid image loads
+const debouncedMasonryLayout = debounce(() => {
+    if (!masonryInstance) return;
+    if (typeof imagesLoaded !== 'undefined') {
+        imagesLoaded(masonryInstance.element, () => {
+            masonryInstance?.reloadItems();
+            masonryInstance?.layout();
+        });
+    } else {
+        masonryInstance.reloadItems();
+        masonryInstance.layout();
     }
-}
+}, 200);
 
 function promptPassword(album) {
     currentGallery = album;
     const modal = document.getElementById('passwordModal');
     modal.style.display = 'flex';
-    document.getElementById('albumPasscodeInput').value = '';
+    const input = document.getElementById('albumPasscodeInput');
+    input.value = '';
+    input.focus();
     document.getElementById('passwordError').textContent = '';
 }
 
@@ -264,27 +272,24 @@ function checkAlbumPasscode() {
     const passcode = document.getElementById('albumPasscodeInput').value;
     const errorElement = document.getElementById('passwordError');
     const galleryPass = galleryLookup[currentGallery]?.password || '';
-    if (galleryPass && galleryPass === passcode) {
+
+    if (!galleryPass || galleryPass === passcode) {
         loadGallery(currentGallery);
         closePasswordPrompt();
         return;
     }
-    if (!galleryPass) {
-        loadGallery(currentGallery);
-        closePasswordPrompt();
-        return;
-    }
+
     errorElement.textContent = 'Incorrect passcode. Please try again.';
-    document.getElementById('albumPasscodeInput').classList.add('error');
-    setTimeout(() => {
-        document.getElementById('albumPasscodeInput').classList.remove('error');
-    }, 2000);
+    const input = document.getElementById('albumPasscodeInput');
+    input.classList.add('error');
+    setTimeout(() => input.classList.remove('error'), 2000);
 }
 
 async function loadGallery(album) {
     try {
         const gallery = galleryLookup[album];
         if (!gallery) throw new Error('Gallery not found');
+
         let photos = gallery.photos || [];
         if (!photos.length) {
             try {
@@ -296,17 +301,12 @@ async function loadGallery(album) {
                 console.warn('Manifest fallback failed:', err);
             }
         }
-        const downloadLink = gallery.downloadLink || '#';
 
+        const downloadLink = gallery.downloadLink || '#';
         currentPhotos = photos.map(photo => `images/${encodeURIComponent(gallery.name)}/${encodeURIComponent(photo)}`);
 
-        // Use virtual scrolling for galleries with many images
-        // Lower threshold on mobile to improve performance
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const threshold = isMobile ? 30 : 50;
-        const useVirtualScrolling = photos.length > threshold;
-
-        if (useVirtualScrolling) {
+        const threshold = _isMobile ? 30 : 50;
+        if (photos.length > threshold) {
             loadGalleryWithVirtualScrolling(album, photos, downloadLink);
         } else {
             loadGalleryNormal(album, photos, downloadLink);
@@ -324,6 +324,7 @@ function loadGalleryNormal(album, photos, downloadLink) {
     const safeId = safeCSSId(album);
     const encodedAlbum = encodeURIComponent(gallery ? gallery.name : album);
     const photoSizes = '(min-width: 1200px) 22vw, (min-width: 900px) 28vw, (min-width: 600px) 42vw, 90vw';
+
     const galleryHTML = `
         <section class="gallery">
             <header class="gallery-header">
@@ -331,7 +332,7 @@ function loadGalleryNormal(album, photos, downloadLink) {
                     <i class="fas fa-arrow-left"></i> Back to Collections
                 </button>
                 <h2>${displayTitle}</h2>
-                <a class="btn btn-primary btn-download" href="${escapeHTML(downloadLink)}">
+                <a class="btn btn-primary btn-download" href="${escapeHTML(downloadLink)}" target="_blank" rel="noopener">
                     <i class="fas fa-download"></i> Download All
                 </a>
             </header>
@@ -352,21 +353,18 @@ function loadGalleryNormal(album, photos, downloadLink) {
     document.getElementById('galleryContainer').innerHTML = galleryHTML;
     document.querySelector('.portfolio-section').style.display = 'none';
     document.querySelector('.gallery').scrollIntoView({ behavior: 'smooth' });
-    // Remove any stale listener before adding to prevent leaks
+
     document.removeEventListener('keydown', handleKeyboardNavigation);
     document.addEventListener('keydown', handleKeyboardNavigation);
 
-    // Load images with data-src for lazy loading
+    // Set data-src for lazy loading
     const imgElements = document.querySelectorAll('.photo-item img');
     imgElements.forEach((imgElement, index) => {
         imgElement.dataset.src = `images/${encodedAlbum}/${encodeURIComponent(photos[index])}`;
     });
-    
-    // Initialize masonry layout
+
     const photoGrid = document.getElementById('photoGrid');
     initializeMasonry(photoGrid);
-    
-    // Initialize lazy loading for gallery images
     initializeLazyLoading();
 }
 
@@ -375,10 +373,8 @@ function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
     const displayTitle = escapeHTML(gallery ? gallery.title : album);
     const safeId = safeCSSId(album);
     const encodedAlbum = encodeURIComponent(gallery ? gallery.name : album);
-    // Adjust batch size based on device and connection
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const slow = isSlowConnection();
-    const BATCH_SIZE = (isMobile || slow) ? 10 : 20;
+    const BATCH_SIZE = (_isMobile || slow) ? 10 : 20;
     const photoSizes = '(min-width: 1200px) 22vw, (min-width: 900px) 28vw, (min-width: 600px) 42vw, 90vw';
     let renderedCount = 0;
     let masonryInitialized = false;
@@ -390,7 +386,7 @@ function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
                     <i class="fas fa-arrow-left"></i> Back to Collections
                 </button>
                 <h2>${displayTitle}</h2>
-                <a class="btn btn-primary btn-download" href="${escapeHTML(downloadLink)}">
+                <a class="btn btn-primary btn-download" href="${escapeHTML(downloadLink)}" target="_blank" rel="noopener">
                     <i class="fas fa-download"></i> Download All
                 </a>
             </header>
@@ -405,13 +401,12 @@ function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
     document.getElementById('galleryContainer').innerHTML = galleryHTML;
     document.querySelector('.portfolio-section').style.display = 'none';
     document.querySelector('.gallery').scrollIntoView({ behavior: 'smooth' });
-    // Remove any stale listener before adding to prevent leaks
+
     document.removeEventListener('keydown', handleKeyboardNavigation);
     document.addEventListener('keydown', handleKeyboardNavigation);
 
     const photoGrid = document.getElementById('photoGrid');
 
-    // Function to render a batch of photos
     function renderBatch() {
         const fragment = document.createDocumentFragment();
         const end = Math.min(renderedCount + BATCH_SIZE, photos.length);
@@ -421,7 +416,6 @@ function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
             div.className = 'photo-item';
             div.id = `photoItem-${i}`;
             div.onclick = () => openLightbox(i);
-            
             div.innerHTML = `
                 <div class="skeleton"></div>
                 <img data-src="images/${encodedAlbum}/${encodeURIComponent(photos[i])}" alt="${escapeHTML(photos[i])}" class="lazy-img" loading="lazy" decoding="async" sizes="${photoSizes}" style="opacity: 0;">
@@ -432,59 +426,63 @@ function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
         photoGrid.appendChild(fragment);
         renderedCount = end;
 
-        // Initialize masonry on first batch
         if (!masonryInitialized && renderedCount > 0) {
             initializeMasonry(photoGrid);
             masonryInitialized = true;
         } else if (masonryInitialized) {
-            // Update masonry layout for new items
-            updateMasonryLayout();
+            debouncedMasonryLayout();
         }
 
-        // Initialize lazy loading for new batch
         initializeLazyLoading();
 
-        // Update progress
         const progress = (renderedCount / photos.length) * 100;
         const progressEl = document.getElementById(`progress-${safeId}`);
-        const progressBar = progressEl ? progressEl.querySelector('.progress') : null;
+        const progressBar = progressEl?.querySelector('.progress');
         if (progressBar) {
             progressBar.style.width = `${progress}%`;
         }
     }
 
-    // Render initial batch
     renderBatch();
 
-    // Set up scroll observer for infinite loading
-    const scrollObserver = new IntersectionObserver((entries) => {
+    // Clean up any previous scroll/mutation observers
+    cleanupScrollObservers();
+
+    _scrollObserver = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
             if (entry.isIntersecting && renderedCount < photos.length) {
                 renderBatch();
             }
         });
-    }, {
-        rootMargin: '200px' // Load next batch 200px before reaching the end
-    });
+    }, { rootMargin: '200px' });
 
-    // Observe the last element
-    const observeLastElement = () => {
-        const lastItem = photoGrid.lastElementChild;
+    function observeLastPhotoItem() {
+        // Target actual photo items, not sizer/gutter elements
+        const items = photoGrid.querySelectorAll('.photo-item');
+        const lastItem = items[items.length - 1];
         if (lastItem && renderedCount < photos.length) {
-            scrollObserver.observe(lastItem);
+            _scrollObserver.observe(lastItem);
         }
-    };
+    }
 
-    // Start observing
-    setTimeout(observeLastElement, 100);
-    
-    // Re-observe when new items are added
-    const mutationObserver = new MutationObserver(() => {
-        scrollObserver.disconnect();
-        observeLastElement();
+    setTimeout(observeLastPhotoItem, 100);
+
+    _mutationObserver = new MutationObserver(() => {
+        _scrollObserver.disconnect();
+        observeLastPhotoItem();
     });
-    
-    mutationObserver.observe(photoGrid, { childList: true });
+    _mutationObserver.observe(photoGrid, { childList: true });
+}
+
+function cleanupScrollObservers() {
+    if (_scrollObserver) {
+        _scrollObserver.disconnect();
+        _scrollObserver = null;
+    }
+    if (_mutationObserver) {
+        _mutationObserver.disconnect();
+        _mutationObserver = null;
+    }
 }
 
 function exitGallery() {
@@ -517,14 +515,28 @@ function closeExitModal() {
 }
 
 function confirmExitGallery() {
+    // Clean up all observers
+    cleanupScrollObservers();
+
     // Destroy masonry instance
     if (masonryInstance) {
         masonryInstance.destroy();
         masonryInstance = null;
     }
-    
+
+    // Unobserve gallery images from lazy observer (keep observer alive for covers)
+    if (_lazyObserver) {
+        document.querySelectorAll('.photo-grid .lazy-img').forEach(img => {
+            _lazyObserver.unobserve(img);
+        });
+    }
+
     document.getElementById('galleryContainer').innerHTML = '';
     document.removeEventListener('keydown', handleKeyboardNavigation);
+
+    // Reset photo state
+    currentPhotos = [];
+    currentPhotoIndex = 0;
 
     // Show the portfolio section again
     const portfolioSection = document.querySelector('.portfolio-section');
@@ -535,66 +547,49 @@ function confirmExitGallery() {
     closeExitModal();
 }
 
-// Lightbox Functions with modern transitions
+// ── Lightbox Functions ──────────────────────────────────────────────────────
 function openLightbox(index) {
+    if (_lightboxClosing) return;
     currentPhotoIndex = index;
     const lightbox = document.getElementById('lightbox');
-    
-    // Remove closing class if it exists
+
     lightbox.classList.remove('closing');
-    
-    // Show lightbox
     lightbox.style.display = 'block';
-    
-    // Force reflow for animation
     void lightbox.offsetWidth;
-    
-    // Update counter
+
     updateLightboxCounter();
-    
-    // Load and display image
     preloadLightboxImages(index);
-    
-    // Disable body scroll
     document.body.style.overflow = 'hidden';
 }
 
 function preloadLightboxImages(index) {
     const lightboxImage = document.getElementById('lightboxImage');
-    
-    // Remove loaded class for transition
     lightboxImage.classList.remove('loaded');
-    
-    // Create a new image to preload
+
     const tempImg = new Image();
-    
+
     tempImg.onload = () => {
-        // Set the source and show with animation
         lightboxImage.src = currentPhotos[index];
-        setTimeout(() => {
-            lightboxImage.classList.add('loaded');
-        }, 50);
+        requestAnimationFrame(() => lightboxImage.classList.add('loaded'));
     };
-    
+
     tempImg.onerror = () => {
         console.error('Failed to load image:', currentPhotos[index]);
         lightboxImage.src = currentPhotos[index];
         lightboxImage.classList.add('loaded');
     };
-    
-    // Start loading
+
     tempImg.src = currentPhotos[index];
-    
+
     // Preload adjacent images for smooth navigation
-    const preloadIndices = [
-        (index + 1) % currentPhotos.length,
-        (index - 1 + currentPhotos.length) % currentPhotos.length
-    ];
-    
-    preloadIndices.forEach(i => {
-        const img = new Image();
-        img.src = currentPhotos[i];
-    });
+    if (currentPhotos.length > 1) {
+        const nextIdx = (index + 1) % currentPhotos.length;
+        const prevIdx = (index - 1 + currentPhotos.length) % currentPhotos.length;
+        new Image().src = currentPhotos[nextIdx];
+        if (nextIdx !== prevIdx) {
+            new Image().src = currentPhotos[prevIdx];
+        }
+    }
 }
 
 function updateLightboxCounter() {
@@ -605,35 +600,22 @@ function updateLightboxCounter() {
 }
 
 function closeModal() {
+    if (_lightboxClosing) return;
+    _lightboxClosing = true;
+
     const lightbox = document.getElementById('lightbox');
-    
-    // Add closing animation class
     lightbox.classList.add('closing');
-    
-    // Re-enable body scroll
     document.body.style.overflow = '';
-    
-    // Hide after animation completes
+
     setTimeout(() => {
         lightbox.style.display = 'none';
         lightbox.classList.remove('closing');
+        _lightboxClosing = false;
     }, 300);
 }
 
-// Debounce function to limit rapid calls
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-}
-
 const debouncedNavigatePhoto = debounce((direction) => {
+    if (!currentPhotos.length) return;
     currentPhotoIndex = (currentPhotoIndex + direction + currentPhotos.length) % currentPhotos.length;
     updateLightboxCounter();
     preloadLightboxImages(currentPhotoIndex);
@@ -644,91 +626,54 @@ function navigatePhoto(direction) {
 }
 
 function handleKeyboardNavigation(e) {
-    if (document.getElementById('lightbox').style.display !== 'none' && document.getElementById('lightbox').style.display !== '') {
-        switch(e.key) {
-            case 'ArrowLeft':
-                navigatePhoto(-1);
-                break;
-            case 'ArrowRight':
-                navigatePhoto(1);
-                break;
-            case 'Escape':
-                closeModal();
-                break;
-        }
+    const lightbox = document.getElementById('lightbox');
+    const isVisible = lightbox.style.display === 'block' && !_lightboxClosing;
+    if (!isVisible) return;
+
+    switch (e.key) {
+        case 'ArrowLeft':
+            e.preventDefault();
+            navigatePhoto(-1);
+            break;
+        case 'ArrowRight':
+            e.preventDefault();
+            navigatePhoto(1);
+            break;
+        case 'Escape':
+            e.preventDefault();
+            closeModal();
+            break;
     }
 }
 
-// Event Listeners
-document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('lightbox')) {
-        closeModal();
-    }
-});
-
-// Detect slow connections and adjust behavior
-function isSlowConnection() {
-    if ('connection' in navigator) {
-        const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-        if (connection) {
-            // Check if connection is slow (2G or slow-2g)
-            const slowTypes = ['slow-2g', '2g'];
-            if (slowTypes.includes(connection.effectiveType)) {
-                return true;
-            }
-            // Also consider saveData preference
-            if (connection.saveData) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-// Log performance info for debugging
+// ── Performance Logging (deferred) ──────────────────────────────────────────
 function logPerformanceInfo() {
-    // Keep this lightweight to avoid blocking first paint
-    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     console.log('Device Info:', {
-        isMobile,
-        userAgent: navigator.userAgent,
+        isMobile: _isMobile,
         connection: connection ? {
             effectiveType: connection.effectiveType,
             downlink: connection.downlink,
             rtt: connection.rtt,
             saveData: connection.saveData
         } : 'Not available',
-        viewport: {
-            width: window.innerWidth,
-            height: window.innerHeight
-        },
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
         supportsIntersectionObserver: 'IntersectionObserver' in window
     });
 }
 
-// Adjust observer behavior for slow connections
-function getOptimalObserverSettings() {
-    const slow = isSlowConnection();
-    return {
-        rootMargin: slow ? '200px' : '100px',
-        threshold: slow ? 0.1 : 0.01
-    };
-}
-
+// ── Initialization ──────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    // Defer non-critical logging so it doesn't block the main thread
     const deferLog = window.requestIdleCallback || ((cb) => setTimeout(cb, 150));
     deferLog(logPerformanceInfo);
-    
-    // Add mobile-specific optimizations
+
     if ('ontouchstart' in window) {
         document.body.classList.add('touch-device');
     }
-    
-    // Prevent double-tap zoom only on interactive elements, not the whole page
+
+    // Prevent double-tap zoom on interactive elements
     document.addEventListener('touchend', function (event) {
-        if (event.target.closest && event.target.closest('button, .btn, .album-card')) {
+        if (event.target.closest?.('button, .btn, .album-card')) {
             const now = Date.now();
             if (now - (event.target._lastTouchEnd || 0) <= 300) {
                 event.preventDefault();
@@ -736,17 +681,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             event.target._lastTouchEnd = now;
         }
     }, { passive: false });
-    
-    await loadGalleries();
-    
-    // Register service worker for better offline support (future enhancement)
-    if ('serviceWorker' in navigator) {
-        // Uncomment when service worker is implemented
-        // navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW registration failed:', err));
-    }
-});
 
-// Initialize
-document.getElementById('albumPasscodeInput').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') checkAlbumPasscode();
+    // Set up Enter key handler for password input (inside DOMContentLoaded to ensure element exists)
+    const passcodeInput = document.getElementById('albumPasscodeInput');
+    if (passcodeInput) {
+        passcodeInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                checkAlbumPasscode();
+            }
+        });
+    }
+
+    await loadGalleries();
 });

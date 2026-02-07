@@ -25,11 +25,11 @@
     <script src="https://unpkg.com/imagesloaded@5/imagesloaded.pkgd.min.js" defer></script>
     
     <style>
+        /* Critical inline styles for fast first paint - must match styles.css */
         :root {
-            --eggshell: #f9f7f4;
-            --navy: #2a2a35;
-            --navy-dark: #1a1a22;
-            --gold: #c5a47e;
+            --canvas: #f7f3eb;
+            --ink: #0f1118;
+            --accent: #c7a36a;
         }
         * {
             margin: 0;
@@ -38,28 +38,31 @@
         }
         body {
             font-family: 'DM Sans', sans-serif;
-            line-height: 1.7;
-            color: var(--navy);
-            background-color: var(--eggshell);
+            line-height: 1.6;
+            color: var(--ink);
+            background-color: var(--canvas);
             -webkit-font-smoothing: antialiased;
         }
         .navbar {
-            padding: 2.5rem 8%;
-            background: rgba(249, 247, 244, 0.85);
-            border-bottom: 1px solid rgba(197, 164, 126, 0.1);
+            padding: 1.4rem 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .logo {
             font-family: 'Bodoni Moda', serif;
-            font-size: 2.2rem;
+            font-size: 2rem;
+            font-weight: 500;
             letter-spacing: 3px;
-            color: var(--navy-dark);
+            color: var(--ink);
             text-transform: uppercase;
         }
         .navbar a {
             text-decoration: none;
+            color: inherit;
         }
         .skeleton {
-            background: linear-gradient(90deg, #f4f1e8 25%, #e8e5dc 50%, #f4f1e8 75%);
+            background: linear-gradient(90deg, #f0e9df 25%, #e8e5dc 50%, #f0e9df 75%);
             background-size: 200% 100%;
             animation: skeleton-loading 1.8s infinite;
             border-radius: 8px;
