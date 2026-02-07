@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import yaml
 from PIL import Image
@@ -33,7 +33,7 @@ def load_registry() -> Dict:
 def save_registry(data: Dict) -> None:
     REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(REGISTRY_PATH, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=False)
+        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
 
 def validate_gallery_name(name: str) -> str:
     cleaned = name.strip()
@@ -218,8 +218,9 @@ def persist_entry(registry: Dict, updated: Dict) -> None:
     registry["galleries"] = sorted(registry["galleries"], key=lambda g: g.get("title", g.get("name", "")))
 
 
-def build_public_payload(registry: Dict) -> Dict:
+def build_public_payload(registry: Dict) -> Tuple[Dict, Dict]:
     payload = {"galleries": []}
+    secrets = {}
     for entry in registry["galleries"]:
         folder_path = PUBLIC_IMAGES / entry.get("folder", entry.get("name", ""))
         photos = find_images(folder_path) if folder_path.exists() else []
@@ -227,23 +228,27 @@ def build_public_payload(registry: Dict) -> Dict:
         if cover and cover not in photos:
             print(f"Cover '{cover}' not found in {folder_path}; using first image.")
             cover = photos[0] if photos else ""
+        name = entry.get("name")
+        # Public payload: no passwords or download links
         payload["galleries"].append({
-            "name": entry.get("name"),
+            "name": name,
             "title": entry.get("title"),
             "coverPhoto": cover,
-            "password": entry.get("password", ""),
-            "downloadLink": entry.get("download_link", ""),
             "photos": photos,
         })
-    return payload
+        # Secrets: passwords and download links (separate file)
+        secrets[name] = {
+            "password": entry.get("password", ""),
+            "downloadLink": entry.get("download_link", ""),
+        }
+    return payload, secrets
 
 
-def write_public_files(payload: Dict) -> None:
+def write_public_files(payload: Dict, secrets: Dict) -> None:
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
-    secrets = {g["name"]: {"password": g.get("password", ""), "downloadLink": g.get("downloadLink", "")} for g in payload.get("galleries", [])}
     with open(SECRETS_JSON, "w", encoding="utf-8") as f:
         json.dump(secrets, f, indent=2)
 
@@ -270,8 +275,8 @@ def main():
 
     persist_entry(registry, updated_entry)
     save_registry(registry)
-    payload = build_public_payload(registry)
-    write_public_files(payload)
+    payload, secrets = build_public_payload(registry)
+    write_public_files(payload, secrets)
     print(f"\nDone. Updated registry: {REGISTRY_PATH}")
     print(f"Updated public data: {OUTPUT_JSON}")
     print(f"Secrets (public): {SECRETS_JSON}")

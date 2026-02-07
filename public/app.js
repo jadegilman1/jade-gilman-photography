@@ -6,6 +6,18 @@ let currentPhotoIndex = 0;
 let currentZip = null;
 let masonryInstance = null;
 
+// Utility: sanitize a string for safe insertion into HTML
+function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+}
+
+// Utility: create a safe CSS-friendly ID from a gallery name
+function safeCSSId(name) {
+    return name.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
 async function loadGalleries() {
     try {
         const response = await fetch('images/galleries.json');
@@ -29,30 +41,32 @@ async function loadGalleries() {
         galleryList.forEach(g => {
             if (g && g.name) {
                 galleryLookup[g.name] = g;
+                // Also index by safe CSS ID for promptPassword lookups
+                galleryLookup[safeCSSId(g.name)] = g;
             }
         });
         const albumsGrid = document.getElementById('albumsGrid');
 
         // Responsive hints for covers to avoid over-downloading on small screens
         const coverSizes = '(min-width: 1200px) 33vw, (min-width: 768px) 45vw, 90vw';
-        const buildSrcSet = (src) => `${src} 640w, ${src} 960w, ${src} 1440w`;
         
         // First 3 galleries should load eagerly
         const eagerLoadCount = 3;
         
         albumsGrid.innerHTML = galleryList.map((gallery, index) => {
             const isEager = index < eagerLoadCount;
+            const safeId = safeCSSId(gallery.name);
+            const safeTitle = escapeHTML(gallery.title);
+            const coverSrc = `images/${encodeURIComponent(gallery.name)}/${encodeURIComponent(gallery.coverPhoto)}`;
             
             return `
-            <article class="card album-card" data-album="${gallery.name}" onclick="promptPassword('${gallery.name}')">
+            <article class="card album-card" data-album="${safeId}" onclick="promptPassword('${safeId}')">
                 <div class="card-image">
                     <div class="image-overlay"></div>
                     ${!isEager ? '<div class="skeleton"></div>' : ''}
-                    <img id="cover-${gallery.name}" 
-                         ${isEager ? `src="images/${gallery.name}/${gallery.coverPhoto}"` : `data-src="images/${gallery.name}/${gallery.coverPhoto}"`}
-                         ${isEager ? `srcset="${buildSrcSet(`images/${gallery.name}/${gallery.coverPhoto}`)}"` : `data-srcset="${buildSrcSet(`images/${gallery.name}/${gallery.coverPhoto}`)}"`}
-                         sizes="${coverSizes}"
-                         alt="${gallery.title}" 
+                    <img id="cover-${safeId}" 
+                         ${isEager ? `src="${coverSrc}"` : `data-src="${coverSrc}"`}
+                         alt="${safeTitle}" 
                          class="${isEager ? 'eager-cover-img' : 'lazy-cover-img'}"
                          loading="${isEager ? 'eager' : 'lazy'}"
                          decoding="async"
@@ -60,8 +74,8 @@ async function loadGalleries() {
                          style="opacity: ${isEager ? '1' : '0'};">
                 </div>
                 <div class="card-content">
-                    <h3>${gallery.title}</h3>
-                    <button class="btn btn-outline" onclick="promptPassword('${gallery.name}'); event.stopPropagation();">
+                    <h3>${safeTitle}</h3>
+                    <button class="btn btn-outline" onclick="promptPassword('${safeId}'); event.stopPropagation();">
                         Enter <i class="fas fa-arrow-right"></i>
                     </button>
                 </div>
@@ -272,7 +286,7 @@ async function loadGallery(album) {
         let photos = gallery.photos || [];
         if (!photos.length) {
             try {
-                const manifestResponse = await fetch(`images/${album}/manifest.json`);
+                const manifestResponse = await fetch(`images/${encodeURIComponent(gallery.name)}/manifest.json`);
                 if (manifestResponse.ok) {
                     photos = await manifestResponse.json();
                 }
@@ -282,7 +296,7 @@ async function loadGallery(album) {
         }
         const downloadLink = gallery.downloadLink || '#';
 
-        currentPhotos = photos.map(photo => `images/${gallery.name}/${photo}`);
+        currentPhotos = photos.map(photo => `images/${encodeURIComponent(gallery.name)}/${encodeURIComponent(photo)}`);
 
         // Use virtual scrolling for galleries with many images
         // Lower threshold on mobile to improve performance
@@ -303,16 +317,19 @@ async function loadGallery(album) {
 }
 
 function loadGalleryNormal(album, photos, downloadLink) {
+    const gallery = galleryLookup[album];
+    const displayTitle = escapeHTML(gallery ? gallery.title : album);
+    const safeId = safeCSSId(album);
+    const encodedAlbum = encodeURIComponent(gallery ? gallery.name : album);
     const photoSizes = '(min-width: 1200px) 22vw, (min-width: 900px) 28vw, (min-width: 600px) 42vw, 90vw';
-    const buildSrcSet = (src) => `${src} 640w, ${src} 960w, ${src} 1400w`;
     const galleryHTML = `
         <section class="gallery">
             <header class="gallery-header">
                 <button class="btn back-btn" onclick="exitGallery()">
                     <i class="fas fa-arrow-left"></i> Back to Collections
                 </button>
-                <h2>${album.replace(/-/g, ' ')}</h2>
-                <a class="btn btn-primary btn-download" href="${downloadLink}">
+                <h2>${displayTitle}</h2>
+                <a class="btn btn-primary btn-download" href="${escapeHTML(downloadLink)}">
                     <i class="fas fa-download"></i> Download All
                 </a>
             </header>
@@ -322,24 +339,25 @@ function loadGalleryNormal(album, photos, downloadLink) {
                 ${photos.map((photo, index) => `
                     <div class="photo-item" id="photoItem-${index}" onclick="openLightbox(${index})">
                         <div class="skeleton"></div>
-                        <img src="" alt="${photo}" class="lazy-img" loading="lazy" decoding="async" sizes="${photoSizes}" style="opacity: 0;">
+                        <img src="" alt="${escapeHTML(photo)}" class="lazy-img" loading="lazy" decoding="async" sizes="${photoSizes}" style="opacity: 0;">
                     </div>
                 `).join('')}
             </div>
-            <div class="progress-bar" id="progress-${album}"><div class="progress"></div></div>
+            <div class="progress-bar" id="progress-${safeId}"><div class="progress"></div></div>
         </section>
     `;
 
     document.getElementById('galleryContainer').innerHTML = galleryHTML;
     document.querySelector('.portfolio-section').style.display = 'none';
     document.querySelector('.gallery').scrollIntoView({ behavior: 'smooth' });
+    // Remove any stale listener before adding to prevent leaks
+    document.removeEventListener('keydown', handleKeyboardNavigation);
     document.addEventListener('keydown', handleKeyboardNavigation);
 
     // Load images with data-src for lazy loading
     const imgElements = document.querySelectorAll('.photo-item img');
     imgElements.forEach((imgElement, index) => {
-        imgElement.dataset.src = `images/${album}/${photos[index]}`;
-        imgElement.dataset.srcset = buildSrcSet(`images/${album}/${photos[index]}`);
+        imgElement.dataset.src = `images/${encodedAlbum}/${encodeURIComponent(photos[index])}`;
     });
     
     // Initialize masonry layout
@@ -351,12 +369,15 @@ function loadGalleryNormal(album, photos, downloadLink) {
 }
 
 function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
+    const gallery = galleryLookup[album];
+    const displayTitle = escapeHTML(gallery ? gallery.title : album);
+    const safeId = safeCSSId(album);
+    const encodedAlbum = encodeURIComponent(gallery ? gallery.name : album);
     // Adjust batch size based on device and connection
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     const slow = isSlowConnection();
-    const BATCH_SIZE = (isMobile || slow) ? 10 : 20; // Render fewer images on mobile/slow connections
+    const BATCH_SIZE = (isMobile || slow) ? 10 : 20;
     const photoSizes = '(min-width: 1200px) 22vw, (min-width: 900px) 28vw, (min-width: 600px) 42vw, 90vw';
-    const buildSrcSet = (src) => `${src} 640w, ${src} 960w, ${src} 1400w`;
     let renderedCount = 0;
     let masonryInitialized = false;
 
@@ -366,8 +387,8 @@ function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
                 <button class="btn back-btn" onclick="exitGallery()">
                     <i class="fas fa-arrow-left"></i> Back to Collections
                 </button>
-                <h2>${album.replace(/-/g, ' ')}</h2>
-                <a class="btn btn-primary btn-download" href="${downloadLink}">
+                <h2>${displayTitle}</h2>
+                <a class="btn btn-primary btn-download" href="${escapeHTML(downloadLink)}">
                     <i class="fas fa-download"></i> Download All
                 </a>
             </header>
@@ -375,13 +396,15 @@ function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
                 <div class="photo-grid-sizer"></div>
                 <div class="photo-grid-gutter-sizer"></div>
             </div>
-            <div class="progress-bar" id="progress-${album}"><div class="progress"></div></div>
+            <div class="progress-bar" id="progress-${safeId}"><div class="progress"></div></div>
         </section>
     `;
 
     document.getElementById('galleryContainer').innerHTML = galleryHTML;
     document.querySelector('.portfolio-section').style.display = 'none';
     document.querySelector('.gallery').scrollIntoView({ behavior: 'smooth' });
+    // Remove any stale listener before adding to prevent leaks
+    document.removeEventListener('keydown', handleKeyboardNavigation);
     document.addEventListener('keydown', handleKeyboardNavigation);
 
     const photoGrid = document.getElementById('photoGrid');
@@ -399,7 +422,7 @@ function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
             
             div.innerHTML = `
                 <div class="skeleton"></div>
-                <img data-src="images/${album}/${photos[i]}" data-srcset="${buildSrcSet(`images/${album}/${photos[i]}`)}" alt="${photos[i]}" class="lazy-img" loading="lazy" decoding="async" sizes="${photoSizes}" style="opacity: 0;">
+                <img data-src="images/${encodedAlbum}/${encodeURIComponent(photos[i])}" alt="${escapeHTML(photos[i])}" class="lazy-img" loading="lazy" decoding="async" sizes="${photoSizes}" style="opacity: 0;">
             `;
             fragment.appendChild(div);
         }
@@ -421,7 +444,8 @@ function loadGalleryWithVirtualScrolling(album, photos, downloadLink) {
 
         // Update progress
         const progress = (renderedCount / photos.length) * 100;
-        const progressBar = document.querySelector(`#progress-${album} .progress`);
+        const progressEl = document.getElementById(`progress-${safeId}`);
+        const progressBar = progressEl ? progressEl.querySelector('.progress') : null;
         if (progressBar) {
             progressBar.style.width = `${progress}%`;
         }
@@ -502,9 +526,10 @@ function confirmExitGallery() {
 
     // Show the portfolio section again
     const portfolioSection = document.querySelector('.portfolio-section');
-    if (portfolioSection) portfolioSection.style.display = '';
-
-    portfolioSection.scrollIntoView({ behavior: 'smooth' });
+    if (portfolioSection) {
+        portfolioSection.style.display = '';
+        portfolioSection.scrollIntoView({ behavior: 'smooth' });
+    }
     closeExitModal();
 }
 
@@ -617,7 +642,7 @@ function navigatePhoto(direction) {
 }
 
 function handleKeyboardNavigation(e) {
-    if (document.getElementById('lightbox').style.display === 'flex') {
+    if (document.getElementById('lightbox').style.display !== 'none' && document.getElementById('lightbox').style.display !== '') {
         switch(e.key) {
             case 'ArrowLeft':
                 navigatePhoto(-1);
@@ -699,15 +724,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.body.classList.add('touch-device');
     }
     
-    // Prevent double-tap zoom on buttons
-    let lastTouchEnd = 0;
+    // Prevent double-tap zoom only on interactive elements, not the whole page
     document.addEventListener('touchend', function (event) {
-        const now = Date.now();
-        if (now - lastTouchEnd <= 300) {
-            event.preventDefault();
+        if (event.target.closest && event.target.closest('button, .btn, .album-card')) {
+            const now = Date.now();
+            if (now - (event.target._lastTouchEnd || 0) <= 300) {
+                event.preventDefault();
+            }
+            event.target._lastTouchEnd = now;
         }
-        lastTouchEnd = now;
-    }, false);
+    }, { passive: false });
     
     await loadGalleries();
     
