@@ -1,31 +1,43 @@
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import yaml
 from PIL import Image
 from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parent.parent
-REGISTRY_PATH = ROOT / "data" / "galleries.yaml"
+REGISTRY_PATH = ROOT / "data" / "galleries.json"
 PUBLIC_IMAGES = ROOT / "public" / "images"
 OUTPUT_JSON = PUBLIC_IMAGES / "galleries.json"
 SECRETS_JSON = ROOT / "public" / "secrets.json"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 RESIZE_TARGET = (1600, 1200)
+MAX_WORKERS = os.cpu_count() or 4
+
 ResamplingAttr = getattr(Image, "Resampling", None)
 if ResamplingAttr:
-    RESAMPLE: Any = getattr(ResamplingAttr, "LANCZOS", getattr(ResamplingAttr, "BICUBIC", getattr(ResamplingAttr, "NEAREST", 1)))
+    RESAMPLE: Any = getattr(
+        ResamplingAttr, "LANCZOS",
+        getattr(ResamplingAttr, "BICUBIC", getattr(ResamplingAttr, "NEAREST", 1)),
+    )
 else:
-    RESAMPLE: Any = getattr(Image, "LANCZOS", getattr(Image, "BICUBIC", getattr(Image, "NEAREST", 1)))
+    RESAMPLE: Any = getattr(
+        Image, "LANCZOS", getattr(Image, "BICUBIC", getattr(Image, "NEAREST", 1))
+    )
+
+
+# ── Registry I/O (JSON) ────────────────────────────────────────────────────
 
 
 def load_registry() -> Dict:
     if not REGISTRY_PATH.exists():
         return {"galleries": []}
     with open(REGISTRY_PATH, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
+        data = json.load(f)
+    if not isinstance(data, dict):
+        return {"galleries": []}
     data.setdefault("galleries", [])
     return data
 
@@ -33,7 +45,11 @@ def load_registry() -> Dict:
 def save_registry(data: Dict) -> None:
     REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(REGISTRY_PATH, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+# ── Validation helpers ──────────────────────────────────────────────────────
+
 
 def validate_gallery_name(name: str) -> str:
     cleaned = name.strip()
@@ -41,10 +57,13 @@ def validate_gallery_name(name: str) -> str:
         raise SystemExit("Gallery name is required and cannot be empty.")
     illegal_chars = set('<>:"/\\|?*')
     if any(ch in illegal_chars for ch in cleaned):
-        raise SystemExit("Gallery name cannot contain characters <>:\"/\\|?*.")
+        raise SystemExit('Gallery name cannot contain characters <>:"/\\|?*.')
     if cleaned in {".", ".."}:
         raise SystemExit("Gallery name cannot be '.' or '..'.")
     return cleaned
+
+
+# ── Interactive helpers ─────────────────────────────────────────────────────
 
 
 def prompt(text: str, default: str = "") -> str:
@@ -69,41 +88,29 @@ def list_galleries(registry: Dict) -> None:
         print(f" {idx}. {g.get('name', g.get('title', 'Untitled'))}")
 
 
+_BLANK_ENTRY: Dict = {
+    "name": "", "folder": "", "title": "",
+    "cover": "", "password": "", "download_link": "",
+}
+
+
 def choose_gallery(registry: Dict) -> Dict:
     list_galleries(registry)
     total = len(registry["galleries"])
     choice = input("\nEnter number to edit, or 'n' to add a new gallery: ").strip().lower()
     if choice == "n" or not registry["galleries"]:
-        return {
-            "name": "",
-            "folder": "",
-            "title": "",
-            "cover": "",
-            "password": "",
-            "download_link": "",
-        }
+        return _BLANK_ENTRY.copy()
     if not choice.isdigit():
         print("Invalid choice; starting a new gallery.")
-        return {
-            "name": "",
-            "folder": "",
-            "title": "",
-            "cover": "",
-            "password": "",
-            "download_link": "",
-        }
+        return _BLANK_ENTRY.copy()
     idx = int(choice)
     if 1 <= idx <= total:
         return registry["galleries"][idx - 1].copy()
     print("Out of range; starting a new gallery.")
-    return {
-        "name": "",
-        "folder": "",
-        "title": "",
-        "cover": "",
-        "password": "",
-        "download_link": "",
-    }
+    return _BLANK_ENTRY.copy()
+
+
+# ── Folder / image helpers ──────────────────────────────────────────────────
 
 
 def ensure_folder(folder_name: str) -> Path:
@@ -113,31 +120,45 @@ def ensure_folder(folder_name: str) -> Path:
     create = input(f"Folder '{folder_path}' is missing. Create it now? (y/n) ").strip().lower() or "y"
     if create == "y":
         folder_path.mkdir(parents=True, exist_ok=True)
-        print(f"Created folder: {folder_path}. Add photos to this folder before continuing.")
+        print(f"Created folder: {folder_path}. Add photos before continuing.")
         return folder_path
-    raise SystemExit("Folder missing. Please create it and add images before running the wizard.")
+    raise SystemExit("Folder missing. Please create it and add images first.")
 
 
 def find_images(folder: Path) -> List[str]:
-    photos = [f for f in os.listdir(folder) if Path(f).suffix.lower() in IMAGE_EXTS]
-    photos.sort()
-    return photos
+    return sorted(
+        f for f in os.listdir(folder)
+        if os.path.isfile(folder / f) and Path(f).suffix.lower() in IMAGE_EXTS
+    )
+
+
+# ── Resize logic (multi-threaded) ──────────────────────────────────────────
+
+
+def _needs_resize(file_path: Path) -> bool:
+    try:
+        with Image.open(file_path) as img:
+            w, h = img.size
+            return w > RESIZE_TARGET[0] or h > RESIZE_TARGET[1]
+    except OSError:
+        return False
 
 
 def already_resized(folder: Path) -> bool:
     photos = find_images(folder)
     if not photos:
         return False
-    for file_name in photos:
-        file_path = folder / file_name
-        try:
-            with Image.open(file_path) as img:
-                w, h = img.size
-                if w > RESIZE_TARGET[0] or h > RESIZE_TARGET[1]:
-                    return False
-        except OSError:
-            return False
-    return True
+    # Sample check for large galleries to avoid opening every file
+    sample = photos if len(photos) <= 10 else photos[:: max(1, len(photos) // 10)]
+    return not any(_needs_resize(folder / f) for f in sample)
+
+
+def _resize_one(file_path: Path) -> None:
+    with Image.open(file_path) as img:
+        if img.width <= RESIZE_TARGET[0] and img.height <= RESIZE_TARGET[1]:
+            return
+        img.thumbnail(RESIZE_TARGET, RESAMPLE)
+        img.save(file_path, quality=85, optimize=True)
 
 
 def resize_images(folder: Path) -> None:
@@ -145,12 +166,15 @@ def resize_images(folder: Path) -> None:
     if not photos:
         print("No images to resize.")
         return
-    print("\nResizing images for the web (this overwrites the files in this folder).")
-    for file_name in tqdm(photos, desc="Resizing", unit="file"):
-        file_path = folder / file_name
-        with Image.open(file_path) as img:
-            img.thumbnail(RESIZE_TARGET, RESAMPLE)
-            img.save(file_path)
+    paths = [folder / f for f in photos]
+    print(f"\nResizing {len(paths)} images ({MAX_WORKERS} threads)…")
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {pool.submit(_resize_one, p): p for p in paths}
+        for fut in tqdm(as_completed(futures), total=len(futures), desc="Resizing", unit="file"):
+            fut.result()
+
+
+# ── Cover photo ─────────────────────────────────────────────────────────────
 
 
 def choose_cover(photos: List[str], current_cover: str) -> str:
@@ -158,8 +182,11 @@ def choose_cover(photos: List[str], current_cover: str) -> str:
         return ""
     if current_cover in photos:
         return current_cover
-    print("No cover chosen or previous cover missing; using the first image as cover.")
+    print("No cover chosen or previous cover missing; using the first image.")
     return photos[0]
+
+
+# ── Entry CRUD ──────────────────────────────────────────────────────────────
 
 
 def update_entry(entry: Dict) -> Dict:
@@ -168,11 +195,8 @@ def update_entry(entry: Dict) -> Dict:
         entry.get("name", ""),
     )
     validated_name = validate_gallery_name(single_name)
-    name = validated_name
-    folder = validated_name
-    title = validated_name
 
-    folder_path = ensure_folder(folder)
+    folder_path = ensure_folder(validated_name)
     photos = find_images(folder_path)
     if not photos:
         raise SystemExit(f"Folder '{folder_path}' has no images. Add photos before running the wizard.")
@@ -187,21 +211,20 @@ def update_entry(entry: Dict) -> Dict:
             print("Skipped resizing. If images are large, the site may load slowly.")
 
     existing_cover = entry.get("cover", "")
-    if existing_cover:
-        if existing_cover in photos:
-            cover = existing_cover
-        else:
-            print(f"Existing cover '{existing_cover}' not found in {folder_path}; defaulting to first image.")
-            cover = choose_cover(photos, "")
+    if existing_cover and existing_cover in photos:
+        cover = existing_cover
     else:
+        if existing_cover:
+            print(f"Existing cover '{existing_cover}' not found; defaulting to first image.")
         cover = choose_cover(photos, "")
+
     password = prompt("Passcode (visible to users)", entry.get("password", ""))
     download_link = prompt("Download link (public)", entry.get("download_link", ""))
 
     return {
-        "name": name or folder,
-        "folder": folder or name,
-        "title": title or name or folder,
+        "name": validated_name,
+        "folder": validated_name,
+        "title": validated_name,
         "cover": cover,
         "password": password,
         "download_link": download_link,
@@ -215,12 +238,15 @@ def persist_entry(registry: Dict, updated: Dict) -> None:
         registry["galleries"][existing[key]] = updated
     else:
         registry["galleries"].append(updated)
-    registry["galleries"] = sorted(registry["galleries"], key=lambda g: g.get("title", g.get("name", "")))
+    registry["galleries"].sort(key=lambda g: g.get("title", g.get("name", "")))
+
+
+# ── Public payload generation ───────────────────────────────────────────────
 
 
 def build_public_payload(registry: Dict) -> Tuple[Dict, Dict]:
-    payload = {"galleries": []}
-    secrets = {}
+    payload: Dict = {"galleries": []}
+    secrets: Dict = {}
     for entry in registry["galleries"]:
         folder_path = PUBLIC_IMAGES / entry.get("folder", entry.get("name", ""))
         photos = find_images(folder_path) if folder_path.exists() else []
@@ -229,14 +255,12 @@ def build_public_payload(registry: Dict) -> Tuple[Dict, Dict]:
             print(f"Cover '{cover}' not found in {folder_path}; using first image.")
             cover = photos[0] if photos else ""
         name = entry.get("name")
-        # Public payload: no passwords or download links
         payload["galleries"].append({
             "name": name,
             "title": entry.get("title"),
             "coverPhoto": cover,
             "photos": photos,
         })
-        # Secrets: passwords and download links (separate file)
         secrets[name] = {
             "password": entry.get("password", ""),
             "downloadLink": entry.get("download_link", ""),
@@ -247,10 +271,12 @@ def build_public_payload(registry: Dict) -> Tuple[Dict, Dict]:
 def write_public_files(payload: Dict, secrets: Dict) -> None:
     OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
-
+        json.dump(payload, f, indent=2, ensure_ascii=False)
     with open(SECRETS_JSON, "w", encoding="utf-8") as f:
-        json.dump(secrets, f, indent=2)
+        json.dump(secrets, f, indent=2, ensure_ascii=False)
+
+
+# ── Main ────────────────────────────────────────────────────────────────────
 
 
 def main():
@@ -279,7 +305,7 @@ def main():
     write_public_files(payload, secrets)
     print(f"\nDone. Updated registry: {REGISTRY_PATH}")
     print(f"Updated public data: {OUTPUT_JSON}")
-    print(f"Secrets (public): {SECRETS_JSON}")
+    print(f"Secrets: {SECRETS_JSON}")
     print("You can now deploy.")
 
 

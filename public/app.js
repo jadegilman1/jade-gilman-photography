@@ -7,10 +7,9 @@ let currentZip = null;
 let masonryInstance = null;
 
 // Utility: sanitize a string for safe insertion into HTML
+const _escapeMap = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 function escapeHTML(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
+    return String(str).replace(/[&<>"']/g, ch => _escapeMap[ch]);
 }
 
 // Utility: create a safe CSS-friendly ID from a gallery name
@@ -20,13 +19,16 @@ function safeCSSId(name) {
 
 async function loadGalleries() {
     try {
-        const response = await fetch('images/galleries.json');
+        // Fetch galleries and secrets in parallel
+        const [response, secretsResponse] = await Promise.all([
+            fetch('images/galleries.json'),
+            fetch('secrets.json').catch(() => null)
+        ]);
         if (!response.ok) throw new Error('Failed to load galleries');
         const data = await response.json();
         galleryList = data.galleries || [];
         try {
-            const secretsResponse = await fetch('secrets.json');
-            if (secretsResponse.ok) {
+            if (secretsResponse && secretsResponse.ok) {
                 const secrets = await secretsResponse.json();
                 galleryList = galleryList.map(g => ({
                     ...g,

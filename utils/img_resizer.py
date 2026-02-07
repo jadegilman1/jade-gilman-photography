@@ -1,24 +1,59 @@
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Any
 
 from PIL import Image
-import os
 from tqdm import tqdm
 
-def resize_images(directory, size=(1200, 900)):
-    files_to_resize = []
-    for root, dirs, files in os.walk(directory):
-        for file in files:
-            if file.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-                files_to_resize.append(os.path.join(root, file))
-    
-    for file_path in tqdm(files_to_resize, desc="Resizing images", unit="file"):
-        with Image.open(file_path) as img:
-            img.thumbnail(size, Image.LANCZOS)
-            img.save(file_path)
+ROOT = Path(__file__).resolve().parent.parent
+PUBLIC_IMAGES = ROOT / "public" / "images"
+RESIZE_TARGET = (1600, 1200)
+MAX_WORKERS = os.cpu_count() or 4
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+ResamplingAttr = getattr(Image, "Resampling", None)
+if ResamplingAttr:
+    RESAMPLE: Any = getattr(
+        ResamplingAttr, "LANCZOS",
+        getattr(ResamplingAttr, "BICUBIC", getattr(ResamplingAttr, "NEAREST", 1)),
+    )
+else:
+    RESAMPLE: Any = getattr(
+        Image, "LANCZOS", getattr(Image, "BICUBIC", getattr(Image, "NEAREST", 1))
+    )
+
+
+def _resize_one(file_path: Path) -> None:
+    with Image.open(file_path) as img:
+        if img.width <= RESIZE_TARGET[0] and img.height <= RESIZE_TARGET[1]:
+            return
+        img.thumbnail(RESIZE_TARGET, RESAMPLE)
+        img.save(file_path, quality=85, optimize=True)
+
+
+def resize_images(directory: Path) -> None:
+    files_to_resize = [
+        directory / f
+        for f in os.listdir(directory)
+        if os.path.isfile(directory / f) and Path(f).suffix.lower() in IMAGE_EXTS
+    ]
+    if not files_to_resize:
+        print("No images found to resize.")
+        return
+
+    print(f"\nResizing {len(files_to_resize)} images ({MAX_WORKERS} threads)…")
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        futures = {pool.submit(_resize_one, p): p for p in files_to_resize}
+        for fut in tqdm(as_completed(futures), total=len(futures), desc="Resizing", unit="file"):
+            fut.result()
+
 
 if __name__ == "__main__":
-    base_directory = os.path.join('public', 'images')
-    directories = [d for d in os.listdir(base_directory) if os.path.isdir(os.path.join(base_directory, d))]
-    directories.sort()
+    directories = sorted(
+        d for d in os.listdir(PUBLIC_IMAGES)
+        if (PUBLIC_IMAGES / d).is_dir()
+    )
     if not directories:
         print("No directories found.")
     else:
@@ -38,5 +73,4 @@ if __name__ == "__main__":
             else:
                 print(f"Please enter a number between 1 and {len(directories)}.")
 
-        images_directory = os.path.join(base_directory, chosen_directory)
-        resize_images(images_directory)
+        resize_images(PUBLIC_IMAGES / chosen_directory)

@@ -1,18 +1,27 @@
-import os
 import json
+import os
+from pathlib import Path
 
-# generates manifest.json files for each subdirectory to add photos
-def generate_manifest(directory):
-    for root, dirs, files in os.walk(directory):
-        for subdir in dirs:
-            subdir_path = os.path.join(root, subdir)
-            images = [f for f in os.listdir(subdir_path) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp'))]
-            images.sort()
-            manifest_path = os.path.join(subdir_path, 'manifest.json')
-            with open(manifest_path, 'w') as manifest_file:
-                json.dump(images, manifest_file, indent=4)
-            print(f"Generated {manifest_path}")
+ROOT = Path(__file__).resolve().parent.parent
+PUBLIC_IMAGES = ROOT / "public" / "images"
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
+
+def generate_manifest(directory: Path) -> None:
+    """Generate manifest.json for each gallery subfolder (non-recursive)."""
+    for entry in sorted(os.listdir(directory)):
+        subdir_path = directory / entry
+        if not subdir_path.is_dir():
+            continue
+        images = sorted(
+            f for f in os.listdir(subdir_path)
+            if os.path.isfile(subdir_path / f) and Path(f).suffix.lower() in IMAGE_EXTS
+        )
+        manifest_path = subdir_path / "manifest.json"
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(images, f, indent=4, ensure_ascii=False)
+        print(f"Generated {manifest_path}")
+
 
 if __name__ == "__main__":
-    images_directory = os.path.join('public', 'images')
-    generate_manifest(images_directory)
+    generate_manifest(PUBLIC_IMAGES)
