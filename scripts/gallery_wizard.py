@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "utils"))
+
 from thumb_generator import generate_thumbs
 REGISTRY_PATH = ROOT / "data" / "galleries.json"
 PUBLIC_IMAGES = ROOT / "public" / "images"
@@ -122,7 +123,18 @@ def ensure_folder(folder_name: str) -> Path:
     create = input(f"Folder '{folder_path}' is missing. Create it now? (y/n) ").strip().lower() or "y"
     if create == "y":
         folder_path.mkdir(parents=True, exist_ok=True)
-        print(f"Created folder: {folder_path}. Add photos before continuing.")
+        print(f"\nCreated folder:\n  {folder_path}\n")
+        print("Add your photos to this folder, then press Enter to continue.")
+        input("Press Enter when photos are ready… ")
+
+        # Re-check that images were actually added
+        images = [
+            f for f in os.listdir(folder_path)
+            if os.path.isfile(folder_path / f) and Path(f).suffix.lower() in IMAGE_EXTS
+        ]
+        if not images:
+            raise SystemExit("No images found in the folder. Add photos and re-run the wizard.")
+        print(f"Found {len(images)} images. Continuing…\n")
         return folder_path
     raise SystemExit("Folder missing. Please create it and add images first.")
 
@@ -186,9 +198,27 @@ def choose_cover(photos: List[str], current_cover: str) -> str:
     if not photos:
         return ""
     if current_cover in photos:
-        return current_cover
-    print("No cover chosen or previous cover missing; using the first image.")
-    return photos[0]
+        if confirm(f"Keep current cover '{current_cover}'?"):
+            return current_cover
+
+    print("\nAvailable images:")
+    for i, p in enumerate(photos, 1):
+        print(f"  {i}. {p}")
+
+    while True:
+        choice = input(f"\nChoose a cover photo [1-{len(photos)}] (default: 1): ").strip()
+        if not choice:
+            cover = photos[0]
+            break
+        if choice.isdigit():
+            idx = int(choice)
+            if 1 <= idx <= len(photos):
+                cover = photos[idx - 1]
+                break
+        print(f"Please enter a number between 1 and {len(photos)}.")
+
+    print(f"Cover photo: {cover}")
+    return cover
 
 
 # ── Entry CRUD ──────────────────────────────────────────────────────────────
@@ -219,13 +249,13 @@ def update_entry(entry: Dict) -> Dict:
     print("Generating thumbnails…")
     generate_thumbs(folder_path)
 
-    existing_cover = entry.get("cover", "")
-    if existing_cover and existing_cover in photos:
-        cover = existing_cover
-    else:
-        if existing_cover:
-            print(f"Existing cover '{existing_cover}' not found; defaulting to first image.")
-        cover = choose_cover(photos, "")
+    # Generate manifest.json so the frontend can list gallery images
+    manifest_path = folder_path / "manifest.json"
+    with open(manifest_path, "w", encoding="utf-8") as mf:
+        json.dump(photos, mf, indent=4, ensure_ascii=False)
+    print(f"Generated {manifest_path.name} ({len(photos)} images)")
+
+    cover = choose_cover(photos, entry.get("cover", ""))
 
     password = prompt("Passcode (visible to users)", entry.get("password", ""))
     download_link = prompt("Download link (public)", entry.get("download_link", ""))
@@ -257,11 +287,19 @@ def build_public_payload(registry: Dict) -> Dict:
     payload: Dict = {"galleries": []}
     for entry in registry["galleries"]:
         folder_path = PUBLIC_IMAGES / entry.get("folder", entry.get("name", ""))
-        photos = find_images(folder_path) if folder_path.exists() else []
-        cover = entry.get("cover") or (photos[0] if photos else "")
-        if cover and cover not in photos:
+
+        if not folder_path.exists():
+            # Gallery folder was deleted; skip it in the public payload
+            continue
+
+        photos = find_images(folder_path)
+        cover = entry.get("cover") or ""
+        if not cover and photos:
+            cover = photos[0]
+        elif cover and photos and cover not in photos:
             print(f"Cover '{cover}' not found in {folder_path}; using first image.")
-            cover = photos[0] if photos else ""
+            cover = photos[0]
+
         name = entry.get("name")
         payload["galleries"].append({
             "name": name,
@@ -296,7 +334,8 @@ def main():
     print(f"- Folder path: {folder_path}")
     print(f"- Photos found: {len(photos)}")
     print(f"- Cover photo: {cover if cover else 'First image will be used'}")
-    print(f"- Passcode: {'<not set>' if not updated_entry.get('password') else 'set'}")
+    pwd = updated_entry.get('password') or ''
+    print(f"- Passcode: {pwd if pwd else '<not set>'}")
     print(f"- Download link: {updated_entry.get('download_link') or '<not set>'}")
 
     if not confirm("Does this look correct? Proceed to save and update the site files."):

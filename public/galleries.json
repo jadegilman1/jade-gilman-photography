@@ -36,13 +36,6 @@
       "downloadLink": "https://github.com/0xSolanaceae/jade-gilman-photography/releases/download/Eva.Ruyery/Sneak.zip"
     },
     {
-      "name": "Gabby & Taffa",
-      "title": "Gabby & Taffa",
-      "coverPhoto": "DSC08007.jpg",
-      "password": "Veil",
-      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Gabby.Taffa.wedding/DSC07795.zip"
-    },
-    {
       "name": "Jonathan & Victoria",
       "title": "Jonathan & Victoria",
       "coverPhoto": "DSC07404-2.jpg",
@@ -55,6 +48,13 @@
       "coverPhoto": "DSC05769.jpg",
       "password": "Sunny",
       "downloadLink": "https://github.com/0xSolanaceae/jade-gilman-photography/releases/download/Josh.Rhiannon/DSC05570.zip"
+    },
+    {
+      "name": "Kaelly & Nick",
+      "title": "Kaelly & Nick",
+      "coverPhoto": "DSC09402.jpg",
+      "password": "garden",
+      "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Kaelly.Nick/Kaelly.Nick.zip"
     },
     {
       "name": "Katherine & Nick",
@@ -87,7 +87,7 @@
     {
       "name": "Sammi & Will",
       "title": "Sammi & Will",
-      "coverPhoto": "DSC07125.jpg",
+      "coverPhoto": "DSC07175-2.jpg",
       "password": "garden",
       "downloadLink": "https://github.com/jadegilman1/jade-gilman-photography/releases/download/Sammi.Will/Sammi.Will.zip"
     },
